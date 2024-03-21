@@ -21,6 +21,7 @@ typedef struct pcb
 
   uintptr_t page_table; // page table region 0 pointer (physical address)
   SavedContext ctx;     // context of the process
+  uintptr_t spp;        // stack page pointer, the lowest address of the last valid page of the user stack
   uintptr_t brk;        // the break of the process
   // we will use cyclic double linked list to store the process
   struct pcb *next;

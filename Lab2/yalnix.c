@@ -160,6 +160,10 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
     info->sp = init_process->sp;
     info->pc = init_process->pc;
 
+    TracePrintf(2, "KernelStart: init process sp is at 0x%x:)\n", init_process->sp);
+    TracePrintf(2, "KernelStart: init process spp is at 0x%x:)\n", init_process->spp);
+    TracePrintf(2, "KernelStart: Kernel stack limit is at 0x%x:)\n", USER_STACK_LIMIT);
+
     addProcessToExecutionList(init_process);
 
     // use this context switch to test switch back to idle

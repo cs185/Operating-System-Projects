@@ -26,7 +26,7 @@
 #	if you have a file named test1.c in this directory.
 #
 # ALL = yalnix test1 test2 test3
-ALL = yalnix idle test test2 test_fib
+ALL = yalnix idle test test2 test_fib test_sof
 
 #
 #	You must modify the KERNEL_OBJS and KERNEL_SRCS definitions

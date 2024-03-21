@@ -171,6 +171,7 @@ int LoadProgram(char *name, char **args)
   //  The value of cpp was initialized above.
 
   current_process->sp = (void *)cpp;
+  current_process->spp = DOWN_TO_PAGE(cpp);
   /*
    *  Free all the old physical memory belonging to this process,
    *  but be sure to leave the kernel stack for this process (which

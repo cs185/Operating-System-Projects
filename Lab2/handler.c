@@ -10,7 +10,6 @@
 #include "load.h"
 
 static int clock_ticks = 0;
-static uintptr_t valid_stack_pointer = (uintptr_t)USER_STACK_LIMIT;
 
 // every process has 2 clock ticks
 #define CLOCK_INTERVAL 2
@@ -19,7 +18,7 @@ static uintptr_t valid_stack_pointer = (uintptr_t)USER_STACK_LIMIT;
 static void terminate()
 {
   struct pcb *current_process = getCurrentProcess();
-  struct pcb *next_process = getNextProcess(1);
+  struct pcb *next_process = getNextProcess(0);
   int current_process_id = current_process->pid;
   ContextSwitch(ExitSwitch, &current_process->ctx, current_process, next_process);
   TracePrintf(2, "process %d terminated\n", current_process_id);
@@ -160,6 +159,7 @@ void onTrapClock(ExceptionInfo *info)
 {
   AVOID_UNUSED_WARNING(info);
   TracePrintf(2, "onTrapClock: clock interrupt is called\n");
+  TracePrintf(2, "current sp is 0x%x\n", info->sp);
   clock_ticks++;
   if (clock_ticks == CLOCK_INTERVAL)
   {
@@ -228,9 +228,12 @@ void onTrapIllegal(ExceptionInfo *info)
 
 void onTrapMemory(ExceptionInfo *info)
 {
-  TracePrintf(2, "current pc is 0x%x, current sp is 0x%x\n", info->pc, info->sp);
   TracePrintf(2, "onTrapMemory: memory exception is called\n");
-  TracePrintf(0, "accessing memory at 0x%x\n", info->regs[0]);
+  TracePrintf(2, "current sp is 0x%x\n", info->sp);
+  TracePrintf(0, "accessing memory at 0x%x\n", info->addr);
+  struct pcb *current_process = getCurrentProcess();
+
+  uintptr_t valid_stack_pointer = current_process->spp;
 
   switch (info->code)
   {
@@ -240,7 +243,7 @@ void onTrapMemory(ExceptionInfo *info)
 
     uintptr_t addr = (uintptr_t)info->addr;
 
-    // if the address is beyond the user stack, terminate the process
+    // if the address is beyond the user stack, terminate the process. Unlikely to happen
     if (addr >= KERNEL_STACK_BASE)
     {
       TracePrintf(0, "Fail to allocate new page: illegal memory\n");
@@ -248,7 +251,7 @@ void onTrapMemory(ExceptionInfo *info)
       break;
     }
 
-    // if the address is within allocated address of the user stack, terminate the process
+    // if the address is within allocated address of the user stack, terminate the process. Unlikely to happen
     if (addr >= valid_stack_pointer)
     {
       TracePrintf(0, "Fail to allocate new page: memory is already available\n");
@@ -265,18 +268,22 @@ void onTrapMemory(ExceptionInfo *info)
       terminate();
       break;
     }
-
+    
+    // compute the number of pages needed
+    // which decides using allocatePage or allocateMultiPage
     int page_count = (int)((valid_stack_pointer - lowest_addr) >> PAGESHIFT);
     if (page_count == 1)
     {
       uintptr_t new_page = allocatePage();
       if (new_page == (uintptr_t)-1)
       {
-        TracePrintf(0, "Fail to allocate new page: not enough physical memory");
+        TracePrintf(0, "Fail to allocate new page: not enough physical memory\n");
         terminate();
         break;
       }
-
+      
+      TracePrintf(2, "allocated one page to the user stack\n");
+      // insert the new allocated page into page table
       writePageTableEntry(PAGE_TABLE_0_VADDR, lowest_addr, new_page, PROT_READ | PROT_WRITE, PROT_READ | PROT_WRITE);
     }
     else
@@ -284,22 +291,26 @@ void onTrapMemory(ExceptionInfo *info)
       uintptr_t new_pages[page_count];
       if (allocateMultiPage(page_count, new_pages) == -1)
       {
-        TracePrintf(0, "Fail to allocate new page: not enough physical memory");
+        TracePrintf(0, "Fail to allocate new page: not enough physical memory\n");
         terminate();
         break;
       }
-      else
+
+      TracePrintf(2, "allocated %d pages to the user stack\n", page_count);
+      // insert the new allocated pages into page table
+      int i;
+      for (i = 0; i < page_count; i++)
       {
-        int i;
-        for (i = 0; i < page_count; i++)
-        {
-          uintptr_t virtual_addr = lowest_addr + (i << PAGESHIFT);
-          writePageTableEntry(PAGE_TABLE_0_VADDR, virtual_addr, new_pages[i], PROT_READ | PROT_WRITE, PROT_READ | PROT_WRITE);
-        }
+        uintptr_t virtual_addr = lowest_addr + (i << PAGESHIFT);
+        writePageTableEntry(PAGE_TABLE_0_VADDR, virtual_addr, new_pages[i], PROT_READ | PROT_WRITE, PROT_READ | PROT_WRITE);
       }
     }
-    // update the valid_stack_pointer
-    valid_stack_pointer = lowest_addr;
+    
+    // update the sp and spp pointer
+    current_process->sp = (void*)addr;
+    current_process->spp = lowest_addr;
+    TracePrintf(0, "update process sp at 0x%x\n", addr);
+    TracePrintf(0, "update process spp at 0x%x\n", lowest_addr);
     break;
   }
   case TRAP_MEMORY_ACCERR:
