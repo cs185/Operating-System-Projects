@@ -6,12 +6,9 @@
 
 int fibonacci(int n) {
     if (n <= 1) {
-        int tmp = n;
-        return tmp;
+        return n;
     } else {
-        int tmp1 = fibonacci(n - 1);
-        int tmp2 = fibonacci(n - 2);
-        return tmp1 + tmp2;
+        return fibonacci(n - 1) + fibonacci(n - 2);
     }
 }
 

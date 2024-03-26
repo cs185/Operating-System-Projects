@@ -171,7 +171,6 @@ int LoadProgram(char *name, char **args)
   //  The value of cpp was initialized above.
 
   current_process->sp = (void *)cpp;
-  current_process->spp = DOWN_TO_PAGE(cpp);
   /*
    *  Free all the old physical memory belonging to this process,
    *  but be sure to leave the kernel stack for this process (which
@@ -241,8 +240,12 @@ int LoadProgram(char *name, char **args)
 
   // the initial brk for the current process is the end of the data segment
   current_process->brk = (MEM_INVALID_PAGES + text_npg + data_bss_npg) << PAGESHIFT;
+  // the initial stack pointer for the current process is the lowest address of the last valid page of the user stack
+  current_process->stk = DOWN_TO_PAGE(cpp);
+  // current_process->stk = USER_STACK_LIMIT - (stack_npg << PAGESHIFT)
 
-  // printPageTableEntries(current_process->page_table);
+  // there might be something messing up with the page table address, but I don't know what it is
+  // TracePrintf(0, "current process page table 0x%x\n", current_process->page_table);
 
   /*
    *  Read the text and data from the file into memory.

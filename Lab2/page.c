@@ -110,7 +110,7 @@ int usePage(uintptr_t addr)
     return -1;
   }
   markPageUsed(index);
-  TracePrintf(3, "usePage: address 0x%x with page index %d is used\n", addr, index);
+  // TracePrintf(3, "usePage: address 0x%x with page index %d is used\n", addr, index);
   return 0;
 }
 
@@ -126,7 +126,7 @@ uintptr_t allocatePage()
 
   uintptr_t page = (uintptr_t)(index << PAGESHIFT);
   markPageUsed(index);
-  TracePrintf(3, "allocatePage: allocated page %d, with address 0x%x\n", index, page);
+  // TracePrintf(3, "allocatePage: allocated page %d, with address 0x%x\n", index, page);
   return page;
 }
 
@@ -142,7 +142,7 @@ void freePage(uintptr_t addr)
   }
 
   markPageFree(index);
-  TracePrintf(3, "freePage: page 0x%x with index %d is freed\n", addr, index);
+  // TracePrintf(3, "freePage: page 0x%x with index %d is freed\n", addr, index);
 }
 
 // allocate multiple pages, and put the addresses in new_pages

@@ -10,6 +10,8 @@
 #include "pte.h"
 #include "switch.h"
 #include "handler.h"
+#include "exit_status.h"
+#include "terminal.h"
 
 /**
  * rule for level of trace:
@@ -56,6 +58,8 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
 
   WriteRegister(REG_VECTOR_BASE, (RCS421RegVal)interrupt_handlers);
 
+  // we will also initialize the exit status list here for handler to use
+  initExitStatusList();
   interrupt_handlers[TRAP_KERNEL] = onTrapKernel;
   interrupt_handlers[TRAP_CLOCK] = onTrapClock;
   interrupt_handlers[TRAP_ILLEGAL] = onTrapIllegal;
@@ -122,9 +126,13 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
 
   TracePrintf(2, "KernelStart: virtual memory is enabled:)\n");
 
+  // STEP: initialize terminals
+  initTerminals();
+
   // printPageTableEntries(page_table_1);
 
   // STEP 2: initialize the idle and init process
+  initProcessManager();
 
   // first create idle process to have pid 0
   struct pcb *idle_process = createProcess();
@@ -136,14 +144,19 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
 
   // save current context to the idle process
   idle_process->page_table = (uintptr_t)page_table_0;
+  TracePrintf(3, "KernelStart: idle process page table is %p, pid is %d\n", idle_process->page_table, idle_process->pid);
+
   // we first load the idle process
   char *idle_argv[] = {NULL};
   LoadProgram("idle", idle_argv);
   // printPageTableEntries(PAGE_TABLE_0_VADDR);
 
   init_process->page_table = allocatePage();
+  TracePrintf(3, "KernelStart: idle process page table is %p, pid is %d\n", idle_process->page_table, idle_process->pid);
+  TracePrintf(3, "KernelStart: int process page table is %p, pid is %d\n", init_process->page_table, init_process->pid);
   // then we context switch to the init process and load the init process
   ContextSwitch(ForkSwitch, &idle_process->ctx, idle_process, init_process);
+
   // because idle process's context is save to here
   // we need to be causeful about which process we are in
   // we will use pid to do the check
@@ -160,11 +173,7 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
     info->sp = init_process->sp;
     info->pc = init_process->pc;
 
-    TracePrintf(2, "KernelStart: init process sp is at 0x%x:)\n", init_process->sp);
-    TracePrintf(2, "KernelStart: init process spp is at 0x%x:)\n", init_process->spp);
-    TracePrintf(2, "KernelStart: Kernel stack limit is at 0x%x:)\n", USER_STACK_LIMIT);
-
-    addProcessToExecutionList(init_process);
+    addProcessToList(init_process, EXECUTION_LIST);
 
     // use this context switch to test switch back to idle
     // ContextSwitch(NormalSwitch, &init_process->ctx, init_process, idle_process);

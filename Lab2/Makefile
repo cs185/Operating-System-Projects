@@ -26,7 +26,7 @@
 #	if you have a file named test1.c in this directory.
 #
 # ALL = yalnix test1 test2 test3
-ALL = yalnix idle test test2 test_fib test_sof
+ALL = yalnix test idle test_syscall test_stackoverflow test_illegal_memory test_malloc test_delay test_wait test_ttywrite test_ttyread
 
 #
 #	You must modify the KERNEL_OBJS and KERNEL_SRCS definitions
@@ -36,8 +36,8 @@ ALL = yalnix idle test test2 test_fib test_sof
 #
 # KERNEL_OBJS = example1.o example2.o
 # KERNEL_SRCS = example1.c example2.c
-KERNEL_OBJS = yalnix.o page.o pcb.o load.o pte.o switch.o handler.o
-KERNEL_SRCS = yalnix.c page.c pcb.c load.c pte.c switch.c handler.c
+KERNEL_OBJS = yalnix.o page.o pcb.o load.o pte.o switch.o handler.o exit_status.o terminal.o tty_buffer.o
+KERNEL_SRCS = yalnix.c page.c pcb.c load.c pte.c switch.c handler.c exit_status.c terminal.c tty_buffer.c
 
 #
 #	You should not have to modify anything else in this Makefile

@@ -1,5 +1,6 @@
 #include <comp421/hardware.h>
 #include <comp421/yalnix.h>
+#include <stdlib.h>
 #include "switch.h"
 #include "pcb.h"
 #include "pte.h"
@@ -11,6 +12,8 @@ SavedContext *NormalSwitch(SavedContext *ctxp, void *p1, void *p2)
   struct pcb *next_process = (pcb *)p2;
 
   TracePrintf(2, "NormalSwitch: switch function is called for %d and %d\n", current_process->pid, next_process->pid);
+  TracePrintf(3, "content of the current process's context: %c%c%c\n", current_process->ctx.s[0], current_process->ctx.s[1], current_process->ctx.s[2]);
+  TracePrintf(3, "content of the next process's context: %c%c%c\n", next_process->ctx.s[0], next_process->ctx.s[1], next_process->ctx.s[2]);
 
   // copy the page table of the idle process to the init process
   setCurrentProcess(next_process);
@@ -44,7 +47,8 @@ SavedContext *ForkSwitch(SavedContext *ctxp, void *p1, void *p2)
     // if we failed to copy the page table entries
     // we simply continue the current process
     TracePrintf(0, "ForkSwitch: failed to copy page table entries\n");
-    removeProcess(next_process, 1);
+    removeProcessFromList(next_process);
+    free(next_process);
     return ctxp;
   }
 
@@ -72,7 +76,9 @@ SavedContext *ExitSwitch(SavedContext *ctxp, void *p1, void *p2)
   TracePrintf(2, "ExitSwitch: switch function is called for %d and %d\n", current_process->pid, next_process->pid);
   setCurrentProcess(next_process);
   // we can free the current process
-  removeProcess(current_process, 1);
+  TracePrintf(2, "ExitSwitch: free the current process %d\n", current_process->pid);
+  removeProcessFromList(current_process);
+  free(current_process);
 
   // Exit the pages of the current process
   int i;

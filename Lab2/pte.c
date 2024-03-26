@@ -50,7 +50,7 @@ void writePageTableEntry(struct pte *page_table, uintptr_t virtual_address, uint
   }
   page_table[vpn].valid = 1;
 
-  TracePrintf(4, "writePageTableEntry: virtual address of 0x%x is added to page table at position %d matching physical address of 0x%x with pfn %d\n", virtual_address, vpn, physical_address, pfn);
+  // TracePrintf(4, "writePageTableEntry: virtual address of 0x%x is added to page table at position %d matching physical address of 0x%x with pfn %d\n", virtual_address, vpn, physical_address, pfn);
 }
 
 void removePageTableEntry(struct pte *page_table, uintptr_t virtual_address, int free)
@@ -108,7 +108,7 @@ int copyPageTableEntries(uintptr_t dest)
     {
       uintptr_t virtual_address = i << PAGESHIFT;
       uintptr_t physical_address = new_pages[j++];
-      TracePrintf(4, "virtual_address = 0x%x, physical_address = 0x%x\n", virtual_address, physical_address);
+      // TracePrintf(4, "virtual_address = 0x%x, physical_address = 0x%x\n", virtual_address, physical_address);
       writePageTableEntry(PAGE_TABLE_HELPER_1_VADDR, virtual_address, physical_address, page_table_0_vaddr[i].kprot, page_table_0_vaddr[i].uprot);
       // borrow another page (PAGE_TABLE_HELPER_2_VADDR) to gain access to the memory to the content of the page
       writePageTableEntry(page_table_1_vaddr, (uintptr_t)PAGE_TABLE_HELPER_2_VADDR, physical_address, PROT_READ | PROT_WRITE, PROT_NONE);
