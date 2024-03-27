@@ -5,19 +5,23 @@
 #include "tty_buffer.h"
 // this file stores the functions for terminal initialization
 
-#define MAX_BUF_SIZE 1024  // the maximum size of the tty buffers
-
-#define IDLE 0
-#define BUSY 1
+enum TTY_STATUS
+{
+  IDLE,
+  BUSY,
+};
 
 // initialize the terminal status, and the tty buffers
 void initTerminals();
 
-tty_buf **getTtyReceiveBuf();
+// todo: get by id
+tty_buf *getTtyReceiveBuf(int tty_id);
 
-tty_buf **getTtyTransmitBuf();
+tty_buf *getTtyTransmitBuf(int tty_id);
 
-int *getTerminalTransmitStatus();
+int getTerminalTransmitStatus(int tty_id);
+
+void setTerminalTransmitStatus(int tty_id, enum TTY_STATUS status);
 
 #endif // YALNIX_TERMINAL_H
 

@@ -2,6 +2,7 @@
 #include <comp421/yalnix.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "handler.h"
 #include "pcb.h"
 #include "switch.h"
@@ -165,7 +166,19 @@ void onTrapKernel(ExceptionInfo *info)
       break;
     }
 
+    // we will create a new process
+    // and also make the new page table ready
     struct pcb *new_process = createProcess();
+    // uintptr_t page_table = allocateHalfPage();
+    uintptr_t page_table = allocatePage();
+    if (page_table == (uintptr_t)-1)
+    {
+      TracePrintf(0, "onTrapKernel: failed to allocate page table for fork\n");
+      info->regs[0] = -1;
+      break;
+    }
+    new_process->page_table = page_table;
+
     // we need to copy the usage information of the page table
     new_process->brk = current_process->brk;
     new_process->stk = current_process->stk;
@@ -377,21 +390,28 @@ void onTrapKernel(ExceptionInfo *info)
     void *buf = (void *)info->regs[2];
     int len = (int)info->regs[3];
 
+    if (validatePointer((uintptr_t)buf, sizeof(char), PROT_READ & PROT_WRITE) == 0)
+    {
+      TracePrintf(0, "onTrapKernel: tty read buffer is invalid\n");
+      info->regs[0] = ERROR;
+      break;
+    }
+
     TracePrintf(2, "onTrapKernel: tty read is called for terminal %d with target buffer at %x with size=%d\n", tty_id, (uintptr_t)buf, len);
 
     struct pcb *current_process = getCurrentProcess();
     struct pcb *next_process = getNextProcess(0);
 
-    tty_buf **tty_receive_buf = getTtyReceiveBuf();
+    tty_buf *tty_receive_buf = getTtyReceiveBuf(tty_id);
 
     current_process->tty_read_id = tty_id;
     // block the current reading process
-    if (isEmpty(tty_receive_buf[tty_id]))
+    if (isEmpty(tty_receive_buf))
     {
       TracePrintf(3, "terminal %d has nothing to read from yet, blocking the reading process with pid=%d\n", tty_id, current_process->pid);
       // remove it from the execution list
       removeProcessFromList(current_process);
-      addProcessToList(current_process, TTYREAD_LISTS);
+      addProcessToList(current_process, TTY_READ_LIST);
 
       TracePrintf(3, "blocked the reading process with pid=%d, switching to next process with pid=%d\n", current_process->pid, next_process->pid);
       ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_process);
@@ -400,8 +420,8 @@ void onTrapKernel(ExceptionInfo *info)
 
     // when context switch back or even not go to the above if
     // there must be something to read
-    len = getBuf(tty_receive_buf[tty_id], buf, len, 1);
-    TracePrintf(3, "read %d chars from tty_receive_buf, the size of tty_receive_buf now: %d\n", len, tty_receive_buf[tty_id]->size);
+    len = getBuf(tty_receive_buf, buf, len, 1);
+    TracePrintf(3, "read %d chars from tty_receive_buf, the size of tty_receive_buf now: %d\n", len, tty_receive_buf->size);
     current_process->tty_read_id = -1;
     info->regs[0] = len;
     break;
@@ -412,31 +432,39 @@ void onTrapKernel(ExceptionInfo *info)
     void *buf = (void *)info->regs[2];
     int len = (int)info->regs[3];
 
+    if (validatePointer((uintptr_t)buf, sizeof(char), PROT_READ & PROT_WRITE) == 0)
+    {
+      TracePrintf(0, "onTrapKernel: tty write buffer is invalid\n");
+      info->regs[0] = ERROR;
+      break;
+    }
+
     TracePrintf(2, "onTrapKernel: tty write is called on terminal %d, with %d chars at address %x\n", tty_id, len, (uintptr_t)buf);
 
-    tty_buf **tty_transmit_buf = getTtyTransmitBuf();
+    tty_buf *tty_transmit_buf = getTtyTransmitBuf(tty_id);
 
-    int *terminal_transmit_status = getTerminalTransmitStatus();
 
-    if (terminal_transmit_status[tty_id] == BUSY)
+    if (getTerminalTransmitStatus(tty_id) == BUSY)
     {
       TracePrintf(3, "terminal %d is busy transmitting\n", tty_id);
-      len = addBuf(tty_transmit_buf[tty_id], buf, len);
-      TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf[tty_id]->size);
+      len = addBuf(tty_transmit_buf, buf, len);
+      TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf->size);
     }
     else if (len > TERMINAL_MAX_LINE)
     {
-      TracePrintf(3, "char too long, transmiting the first part of %d\n", TERMINAL_MAX_LINE);
-      len = addBuf(tty_transmit_buf[tty_id], buf, len - TERMINAL_MAX_LINE);
-      TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf[tty_id]->size);
+      TracePrintf(3, "string too long, transmiting the first part of %d\n", TERMINAL_MAX_LINE);
+      len = addBuf(tty_transmit_buf, buf, len - TERMINAL_MAX_LINE);
+      TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf->size);
       TtyTransmit(tty_id, buf, TERMINAL_MAX_LINE);
-      terminal_transmit_status[tty_id] = BUSY;
+      setTerminalTransmitStatus(tty_id, BUSY);
     }
     else
     {
+      int buf_len = strlen(buf);
+      len = len <= buf_len ? len : buf_len;
       TracePrintf(3, "transmiting %d chars\n", len);
       TtyTransmit(tty_id, buf, len);
-      terminal_transmit_status[tty_id] = BUSY;
+      setTerminalTransmitStatus(tty_id, BUSY);
     }
     info->regs[0] = len;
     break;
@@ -630,16 +658,20 @@ void onTrapTTYReceive(ExceptionInfo *info)
 
   int tty_id = info->code;
 
-  tty_buf **tty_receive_buf = getTtyReceiveBuf();
+  tty_buf *tty_receive_buf = getTtyReceiveBuf(tty_id);
 
   void *buf = malloc(TERMINAL_MAX_LINE);
   int str_len = TtyReceive(tty_id, buf, TERMINAL_MAX_LINE);
 
-  int len = addBuf(tty_receive_buf[tty_id], buf, str_len);
-  TracePrintf(3, "added %d out of %d chars to tty_receive_buf, tty_receive_buf size: %d\n", len, str_len, tty_receive_buf[tty_id]->size);
+  int len = addBuf(tty_receive_buf, buf, str_len);
+  TracePrintf(3, "added %d out of %d chars to tty_receive_buf, tty_receive_buf size: %d\n", len, str_len, tty_receive_buf->size);
   free(buf);
 
-  struct pcb *next_read_process = getNextTtyReadProcess(tty_id);
+  struct pcb *next_read_process = getList(TTY_READ_LIST);
+  while (next_read_process->tty_read_id != tty_id)
+  {
+    next_read_process = next_read_process->next;
+  }
 
   if (next_read_process != NULL)
   {
@@ -650,13 +682,13 @@ void onTrapTTYReceive(ExceptionInfo *info)
     addProcessToList(next_read_process, EXECUTION_LIST);
     TracePrintf(3, "added the pending reading process to the execution list\n");
 
-    // if the current process is idle process, switch to the reading process at once
-    struct pcb *current_process = getCurrentProcess();
-    if (current_process->pid == 0)
-    {
-      TracePrintf(3, "idle process detacted, switch now\n");
-      ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_read_process);
-    }
+    // // if the current process is idle process, switch to the reading process at once
+    // struct pcb *current_process = getCurrentProcess();
+    // if (current_process->pid == 0)
+    // {
+    //   TracePrintf(3, "idle process detacted, switch now\n");
+    //   ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_read_process);
+    // }
   }
   // if there is no reading process pending, do nothing as we already save the line
 }
@@ -667,23 +699,21 @@ void onTrapTTYTransmit(ExceptionInfo *info)
 
   int tty_id = info->code;
 
-  int *terminal_transmit_status = getTerminalTransmitStatus();
+  setTerminalTransmitStatus(tty_id, IDLE);
 
-  terminal_transmit_status[tty_id] = IDLE;
-
-  tty_buf **tty_transmit_buf = getTtyTransmitBuf();
+  tty_buf *tty_transmit_buf = getTtyTransmitBuf(tty_id);
 
   // always trying to read the maximum of chars
   void *buf = malloc(TERMINAL_MAX_LINE);
   // the actual length of the string get from the tty_transmit_buf, len <= TERMINAL_MAX_LINE
-  int len = getBuf(tty_transmit_buf[tty_id], buf, TERMINAL_MAX_LINE, 0);
-  TracePrintf(3, "get %d chars from tty_transmit_buf, the size of tty_transmit_buf now: %d\n", len, tty_transmit_buf[tty_id]->size);
+  int len = getBuf(tty_transmit_buf, buf, TERMINAL_MAX_LINE, 0);
+  TracePrintf(3, "get %d chars from tty_transmit_buf, the size of tty_transmit_buf now: %d\n", len, tty_transmit_buf->size);
 
   if (len)
   {
     TracePrintf(3, "continue transmiting %d chars from tty_transmit_buf\n", len);
     TtyTransmit(tty_id, buf, len);
-    terminal_transmit_status[tty_id] = BUSY;
+    setTerminalTransmitStatus(tty_id, BUSY);
   }
   free(buf);
 }

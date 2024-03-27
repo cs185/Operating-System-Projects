@@ -49,59 +49,102 @@ int isEmpty(tty_buf *buf)
     return buf->size == 0;
 }
 
-void insert(tty_buf *buf, char item) 
-{
-    // ensure the buf is not full, if it is, grow it
-    if (isFull(buf))
-        growBuffer(buf);
+// void insert(tty_buf *buf, char item) 
+// {
+//     // ensure the buf is not full, if it is, grow it
+//     if (isFull(buf))
+//         growBuffer(buf);
 
-    buf->items[buf->rear] = item;
-    buf->rear = (buf->rear + 1) % buf->capacity;
-    buf->size++;
-}
+//     buf->items[buf->rear] = item;
+//     buf->rear = (buf->rear + 1) % buf->capacity;
+//     buf->size++;
+// }
 
-char delete(tty_buf *buf) 
-{
-    char item = '\0';
-    if (!isEmpty(buf)) 
-    {
-        item = buf->items[buf->front];
-        buf->front = (buf->front + 1) % buf->capacity;
-        buf->size--;
-    }
-    return item;
-}
+// char delete(tty_buf *buf) 
+// {
+//     char item = '\0';
+//     if (!isEmpty(buf)) 
+//     {
+//         item = buf->items[buf->front];
+//         buf->front = (buf->front + 1) % buf->capacity;
+//         buf->size--;
+//     }
+//     return item;
+// }
 
-int addBuf(tty_buf *target_buf, void *buf, int len) 
-{
+int addBuf(tty_buf *target_buf, void *buf, int len) {
     char *charBuf = (char *)buf;
-    int count = 0;
-    // keep calling insert function to add the item from buf one by one
-    while (!isFull(target_buf) && count < len) 
+
+    // check if growing is needed
+    while (target_buf->size + len > target_buf->capacity) 
     {
-        insert(target_buf, charBuf[count++]);
+        growBuffer(target_buf);
     }
-    return count;
+
+    if (target_buf->rear + len <= target_buf->capacity) 
+    {
+        memcpy(target_buf->items + target_buf->rear, charBuf, len);
+        target_buf->rear = (target_buf->rear + len) % target_buf->capacity;
+    } else 
+    {
+        int first_seg_len = target_buf->capacity - target_buf->rear;
+        memcpy(target_buf->items + target_buf->rear, charBuf, first_seg_len);
+        charBuf += first_seg_len;
+        memcpy(target_buf->items, charBuf, len - first_seg_len);
+        target_buf->rear = len - first_seg_len;
+    }
+
+    target_buf->size += len;
+    return len;
 }
 
-int getBuf(tty_buf *target_buf, void *buf, int len, int get_line) 
-{
-    char *charBuf = (char *)buf;
-    int count = 0;
-    // keep calling delete function to pop the item from the target tty buf one by one
-    while (!isEmpty(target_buf) && count < len) 
-    {
-        char item = delete(target_buf);
-        charBuf[count++] = item;
 
-        // if meeting the nextline and the get_line is set, finish reading
-        if (get_line && item == '\n') 
+int getBuf(tty_buf *target_buf, void *buf, int len, int get_line) {
+    if (isEmpty(target_buf)) 
+    {
+        return 0;
+    }
+
+    char *charBuf = (char *)buf;
+    int to_read = len;
+
+    if (get_line) 
+    // if we want to read to the next newline
+    {
+        int cursor = target_buf->front;
+        to_read = 0;
+        // find the next newline
+        while (target_buf->items[cursor] != '\n') 
         {
-            break;
+            to_read++;
+            cursor = (cursor + 1) % target_buf->capacity;
         }
+        to_read++; // including the newline itself
+    } 
+    else if (len > target_buf->size) 
+    {
+        // just read all the chars in the buffer
+        to_read = target_buf->size;
     }
-    return count;
+
+    // copy the data in batch
+    if (target_buf->front + to_read <= target_buf->capacity) 
+    {
+        memcpy(charBuf, target_buf->items + target_buf->front, to_read);
+    } 
+    else 
+    {
+        int first_seg_len = target_buf->capacity - target_buf->front;
+        memcpy(charBuf, target_buf->items + target_buf->front, first_seg_len);
+        memcpy(charBuf + first_seg_len, target_buf->items, to_read - first_seg_len);
+    }
+
+    target_buf->front = (target_buf->front + to_read) % target_buf->capacity;
+    target_buf->size -= to_read;
+
+    return to_read;
 }
+
 
 void freeBuffer(tty_buf *buf) 
 {

@@ -100,7 +100,7 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
     usePage(addr);
   }
 
-  // struct pte *idle_page_table_0 = (struct pte *)allocatePage();
+  // struct pte *page_table_0 = (struct pte *)allocateHalfPage();
   struct pte *page_table_0 = (struct pte *)allocatePage();
   // we will always put the page table itself at the end of region 1 page table (top of kernel heap)
   writePageTableEntry(page_table_1, (uintptr_t)PAGE_TABLE_0_VADDR, (uintptr_t)page_table_0, PROT_READ | PROT_WRITE, PROT_NONE);
@@ -151,6 +151,7 @@ KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **
   LoadProgram("idle", idle_argv);
   // printPageTableEntries(PAGE_TABLE_0_VADDR);
 
+  // init_process->page_table = allocateHalfPage();
   init_process->page_table = allocatePage();
   TracePrintf(3, "KernelStart: idle process page table is %p, pid is %d\n", idle_process->page_table, idle_process->pid);
   TracePrintf(3, "KernelStart: int process page table is %p, pid is %d\n", init_process->page_table, init_process->pid);

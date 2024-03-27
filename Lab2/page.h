@@ -21,6 +21,9 @@ int usePage(uintptr_t addr);
 // allocate a page
 uintptr_t allocatePage();
 
+// allocate half a page, used for page table
+uintptr_t allocateHalfPage();
+
 // free a page
 void freePage(uintptr_t addr);
 

@@ -4,7 +4,7 @@
 #include <comp421/yalnix.h>
 // this file stores the tty buffer functions
 
-#define INITIAL_CAPACITY 1024
+#define INITIAL_CAPACITY 4
 #define GROWTH_FACTOR 2
 
 typedef struct {
@@ -28,11 +28,11 @@ int getBuf(tty_buf *target_buf, void *buf, int len, int get_line);
 // add a buf of length len to the target tty buf
 int addBuf(tty_buf *target_buf, void *buf, int len);
 
-// insert a char to the tty_buf
-void insert(tty_buf *buf, char item);
+// // insert a char to the tty_buf
+// void insert(tty_buf *buf, char item);
 
-// pop out the item pointed by front from the tty_buf
-char delete(tty_buf *buf);
+// // pop out the item pointed by front from the tty_buf
+// char delete(tty_buf *buf);
 
 // free the tty buffer
 void freeBuffer(tty_buf *buf);

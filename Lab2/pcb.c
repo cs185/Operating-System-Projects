@@ -18,8 +18,9 @@ static struct pcb *delay_list_tail = NULL;
 static struct pcb *wait_list_head = NULL;
 static struct pcb *wait_list_tail = NULL;
 
-static struct pcb **ttyread_list_heads = NULL;
-static struct pcb **ttyread_list_tails = NULL;
+// todo: combine to one list
+static struct pcb *tty_read_list_head = NULL;
+static struct pcb *tty_read_list_tail = NULL;
 
 // static struct pcb *init_process = NULL;
 static struct pcb *idle_process = NULL;
@@ -41,15 +42,7 @@ void initProcessManager()
   INIT_HEAD_TAIL(execution_list_head, execution_list_tail);
   INIT_HEAD_TAIL(delay_list_head, delay_list_tail);
   INIT_HEAD_TAIL(wait_list_head, wait_list_tail);
-
-  ttyread_list_heads = (struct pcb**)malloc(NUM_TERMINALS * sizeof(struct pcb*));
-  ttyread_list_tails = (struct pcb**)malloc(NUM_TERMINALS * sizeof(struct pcb*));
-
-  int i;
-  for (i = 0; i < NUM_TERMINALS; i++)
-  {
-    INIT_HEAD_TAIL(ttyread_list_heads[i], ttyread_list_tails[i]);
-  }
+  INIT_HEAD_TAIL(tty_read_list_head, tty_read_list_tail);
 }
 
 struct pcb *createProcess()
@@ -111,14 +104,14 @@ struct pcb *getNextProcess(int include_self)
   }
 }
 
-struct pcb *getNextTtyReadProcess(int tty_id)
-{
-  if (ttyread_list_heads[tty_id]->next->pid == -1)
-  // no process in the list
-    return NULL;
-  else
-    return ttyread_list_heads[tty_id]->next;
-}
+// struct pcb *getNextTtyReadProcess(int tty_id)
+// {
+//   if (ttyread_list_heads[tty_id]->next->pid == -1)
+//     // no process in the list
+//     return NULL;
+//   else
+//     return ttyread_list_heads[tty_id]->next;
+// }
 
 struct pcb *getList(enum ListType type)
 {
@@ -130,7 +123,8 @@ struct pcb *getList(enum ListType type)
     return delay_list_head;
   case WAIT_LIST:
     return wait_list_head;
-  // todo: get tty read list
+  case TTY_READ_LIST:
+    return tty_read_list_head;
   default:
     return NULL;
   }
@@ -169,8 +163,8 @@ void addProcessToList(struct pcb *pcb, enum ListType type)
   case WAIT_LIST:
     tail = wait_list_tail;
     break;
-  case TTYREAD_LISTS:
-    tail = ttyread_list_tails[pcb->tty_read_id];
+  case TTY_READ_LIST:
+    tail = tty_read_list_tail;
     break;
   default:
     TracePrintf(0, "addProcessToList: unknown type: %d\n", type);
@@ -201,7 +195,10 @@ void printList(enum ListType type)
     TracePrintf(4, "printList: printing wait list\n");
     current = wait_list_head;
     break;
-  // todo: print tty read list
+  case TTY_READ_LIST:
+    TracePrintf(4, "printList: printing tty read list\n");
+    current = tty_read_list_head;
+    break;
   default:
     TracePrintf(0, "printList: unknown type: %d\n", type);
     return;
@@ -236,6 +233,13 @@ struct pcb *getProcessByPid(int pid)
     current = current->next;
   }
   current = wait_list_head;
+  while (current != NULL)
+  {
+    if (current->pid == pid)
+      return current;
+    current = current->next;
+  }
+  current = tty_read_list_head;
   while (current != NULL)
   {
     if (current->pid == pid)

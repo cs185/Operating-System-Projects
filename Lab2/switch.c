@@ -12,8 +12,8 @@ SavedContext *NormalSwitch(SavedContext *ctxp, void *p1, void *p2)
   struct pcb *next_process = (pcb *)p2;
 
   TracePrintf(2, "NormalSwitch: switch function is called for %d and %d\n", current_process->pid, next_process->pid);
-  TracePrintf(3, "content of the current process's context: %c%c%c\n", current_process->ctx.s[0], current_process->ctx.s[1], current_process->ctx.s[2]);
-  TracePrintf(3, "content of the next process's context: %c%c%c\n", next_process->ctx.s[0], next_process->ctx.s[1], next_process->ctx.s[2]);
+  // TracePrintf(3, "content of the current process's context: %s\n", current_process->ctx.s);
+  // TracePrintf(3, "content of the next process's context: %s\n", next_process->ctx.s);
 
   // copy the page table of the idle process to the init process
   setCurrentProcess(next_process);
@@ -38,6 +38,8 @@ SavedContext *ForkSwitch(SavedContext *ctxp, void *p1, void *p2)
   TracePrintf(2, "ForkSwitch: switch function is called for %d and %d\n", current_process->pid, next_process->pid);
 
   uintptr_t page_table = next_process->page_table;
+
+  // TracePrintf(2, "ForkSwitch: next page table is 0x%x, while current page table is 0x%x\n", page_table, current_process->page_table);
 
   // copy the page table of the idle process to the init process
   // TODO: ask TA why will this fail outside of ContextSwitch

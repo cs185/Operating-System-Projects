@@ -6,11 +6,11 @@
 #include "tty_buffer.h"
 
 // keep track of the status for tranmitting each terminal
-int *terminal_transmit_status = NULL;
+static int *terminal_transmit_status = NULL;
 
 // the buffers for tty receive and transmit
-tty_buf **tty_receive_buf = NULL;
-tty_buf **tty_transmit_buf = NULL;
+static tty_buf **tty_receive_buf = NULL;
+static tty_buf **tty_transmit_buf = NULL;
 
 void initTerminals()
 {
@@ -24,23 +24,28 @@ void initTerminals()
     for (i = 0; i < NUM_TERMINALS; i++)
     {
         terminal_transmit_status[i] = IDLE;
-        tty_receive_buf[i] = createBuffer(MAX_BUF_SIZE);
-        tty_transmit_buf[i] = createBuffer(MAX_BUF_SIZE);
+        tty_receive_buf[i] = createBuffer();
+        tty_transmit_buf[i] = createBuffer();
     }
 }
 
-tty_buf **getTtyReceiveBuf()
+tty_buf *getTtyReceiveBuf(int tty_id)
 {
-    return tty_receive_buf;
+    return tty_receive_buf[tty_id];
 }
 
-tty_buf **getTtyTransmitBuf()
+tty_buf *getTtyTransmitBuf(int tty_id)
 {
-    return tty_transmit_buf;
+    return tty_transmit_buf[tty_id];
 }
 
-int *getTerminalTransmitStatus()
+int getTerminalTransmitStatus(int tty_id)
 {
-    return terminal_transmit_status;
+    return terminal_transmit_status[tty_id];
+}
+
+void setTerminalTransmitStatus(int tty_id, enum TTY_STATUS status)
+{
+    terminal_transmit_status[tty_id] = status;
 }
 

@@ -12,7 +12,7 @@ enum ListType
   EXECUTION_LIST,
   DELAY_LIST,
   WAIT_LIST,
-  TTYREAD_LISTS,
+  TTY_READ_LIST,
 };
 
 // the file manages the process control block
@@ -32,6 +32,7 @@ typedef struct pcb
   int ppid;        // parent process id
   int delay;       // delay time (clock tick)
   int child_count; // the number of children of the process currently running
+  int tty_read_id; // the id of the terminal to read from
 
   uintptr_t page_table; // page table region 0 pointer (physical address)
   uintptr_t stk;        // stack page pointer, the lowest address of the last valid page of the user stack
@@ -40,8 +41,6 @@ typedef struct pcb
   // we will use cyclic double linked list to store the process
   struct pcb *next;
   struct pcb *prev;
-
-  int tty_read_id;
 } pcb;
 
 // create a new pcb at the end of the list
@@ -58,9 +57,6 @@ struct pcb *getCurrentProcess();
 // get the next process
 // if include_self is 1, we will put current process into consideration
 struct pcb *getNextProcess(int include_self);
-
-// get the next process blocked due to unable to proceed TtyRead
-struct pcb *getNextTtyReadProcess(int tty_id);
 
 // set the idle process
 void setIdleProcess(struct pcb *pcb);

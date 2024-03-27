@@ -19,6 +19,9 @@ static unsigned char *free_page_bitmap;
 static int page_next = MEM_INVALID_PAGES - 1;
 // keep track of the free page count
 static int page_count;
+// can we use rest half page? if it is -1, we need a new page
+// else it shall be the address of the half page
+static uintptr_t half_page = (uintptr_t)-1;
 
 // initialize the page table, because malloc is not available
 // we need to pass in a valid address from the caller (kernel)
@@ -190,4 +193,26 @@ void printPagePool()
     }
     TracePrintf(0, "%d-%d: %s\n", i, i + 7, str);
   }
+}
+
+uintptr_t allocateHalfPage()
+{
+  uintptr_t page = half_page;
+  if (half_page == (uintptr_t)-1)
+  // if there is no half page available, we need to allocate a new page
+  {
+    page = allocatePage();
+    if (page == (uintptr_t)-1)
+      // if we fail, we simply do nothing
+      return (uintptr_t)-1;
+
+    half_page = page + PAGESIZE / 2;
+  }
+  else
+  // else we will use the half page
+  {
+    page = half_page;
+    half_page = (uintptr_t)-1;
+  }
+  return page;
 }

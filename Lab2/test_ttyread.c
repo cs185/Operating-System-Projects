@@ -13,13 +13,13 @@ int main(int argc, char **argv)
   if (p != 0)
     Fork();
   
-  int len = 128;
-  char buf1[len];
+  int len = 4;
+  char buf[len];
   
   while (1)
   {
-    TtyRead(1, buf1, len);
-    TtyWrite(1, buf1, len);
+    TtyRead(1, buf, len);
+    TtyWrite(1, buf, len);
     
   }
 

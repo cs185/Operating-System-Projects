@@ -99,6 +99,10 @@ int copyPageTableEntries(uintptr_t dest)
   writePageTableEntry(page_table_1_vaddr, (uintptr_t)PAGE_TABLE_HELPER_1_VADDR, (uintptr_t)dest, PROT_READ | PROT_WRITE, PROT_NONE);
   WriteRegister(REG_TLB_FLUSH, (uintptr_t)PAGE_TABLE_HELPER_1_VADDR);
 
+  // wipe out the content of the page
+  // struct pte *page_table_helper_1_vaddr = PAGE_TABLE_HELPER_1_VADDR + ((dest % PAGESIZE) / sizeof(struct pte));
+
+  memset((void *)PAGE_TABLE_HELPER_1_VADDR, 0, PAGESIZE);
   int i;
   // use j as pointer to the new_pages
   int j = 0;
@@ -115,10 +119,10 @@ int copyPageTableEntries(uintptr_t dest)
       WriteRegister(REG_TLB_FLUSH, (uintptr_t)PAGE_TABLE_HELPER_2_VADDR);
 
       // copy the content
-      // memcpy((void *)(PAGE_TABLE_HELPER_2_VADDR), (void *)virtual_address, PAGESIZE);
-      int k;
-      for (k = 0; k < PAGESIZE; k++)
-        ((char *)(PAGE_TABLE_HELPER_2_VADDR))[k] = ((char *)(virtual_address))[k];
+      memcpy((void *)(PAGE_TABLE_HELPER_2_VADDR), (void *)virtual_address, PAGESIZE);
+      // int k;
+      // for (k = 0; k < PAGESIZE; k++)
+      //   ((char *)(PAGE_TABLE_HELPER_2_VADDR))[k] = ((char *)(virtual_address))[k];
     }
   }
 
