@@ -8,6 +8,10 @@
 int main(int argc, char **argv)
 {
   argc++;
+  argv++;
+  Fork();
+  Fork();
+  TracePrintf(0, "I'm done!!!\n");
   // TracePrintf(4, "testProcess: test process is running with %d args at position %p\n", argc, argv);
 
   // int *status = (int *)0x1000;
@@ -29,9 +33,9 @@ int main(int argc, char **argv)
   // }
   // create a invalid address for this user
   // char *addr = (char *)0x20000;
-  char *addr = "test_wait";
-  TracePrintf(4, "executing test_wait\n");
-  Exec(addr, argv);
-  TracePrintf(0, "this shall not happen\n");
+  // char *addr = "test_wait";
+  // TracePrintf(4, "executing test_wait\n");
+  // Exec(addr, argv);
+  // TracePrintf(0, "this shall not happen\n");
   return 0;
 }

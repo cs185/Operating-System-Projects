@@ -18,12 +18,17 @@ static struct pcb *delay_list_tail = NULL;
 static struct pcb *wait_list_head = NULL;
 static struct pcb *wait_list_tail = NULL;
 
-// todo: combine to one list
 static struct pcb *tty_read_list_head = NULL;
 static struct pcb *tty_read_list_tail = NULL;
 
+static struct pcb *tty_write_list_head = NULL;
+static struct pcb *tty_write_list_tail = NULL;
+
 // static struct pcb *init_process = NULL;
 static struct pcb *idle_process = NULL;
+
+// the number of processes except the idle process
+static int process_count = 0;
 
 #define INIT_HEAD_TAIL(head, tail)     \
   head = malloc(sizeof(struct pcb));   \
@@ -34,6 +39,8 @@ static struct pcb *idle_process = NULL;
   tail->pid = -1;                      \
   head->tty_read_id = -1;              \
   tail->tty_read_id = -1;              \
+  head->tty_write_id = -1;             \
+  tail->tty_write_id = -1;             \
   head->next = tail;                   \
   tail->prev = head;
 
@@ -43,6 +50,7 @@ void initProcessManager()
   INIT_HEAD_TAIL(delay_list_head, delay_list_tail);
   INIT_HEAD_TAIL(wait_list_head, wait_list_tail);
   INIT_HEAD_TAIL(tty_read_list_head, tty_read_list_tail);
+  INIT_HEAD_TAIL(tty_write_list_head, tty_write_list_tail);
 }
 
 struct pcb *createProcess()
@@ -125,6 +133,8 @@ struct pcb *getList(enum ListType type)
     return wait_list_head;
   case TTY_READ_LIST:
     return tty_read_list_head;
+  case TTY_WRITE_LIST:
+    return tty_write_list_head;
   default:
     return NULL;
   }
@@ -137,6 +147,7 @@ void removeProcessFromList(struct pcb *pcb)
     TracePrintf(0, "removeProcessFromList: trying to remove head or tail\n");
     return;
   }
+  process_count--;
   // if a process is in a list, it must have a prev and next
   // but we will check it just in case
   if (pcb->prev != NULL)
@@ -166,10 +177,15 @@ void addProcessToList(struct pcb *pcb, enum ListType type)
   case TTY_READ_LIST:
     tail = tty_read_list_tail;
     break;
+  case TTY_WRITE_LIST:
+    tail = tty_write_list_tail;
+    break;
   default:
     TracePrintf(0, "addProcessToList: unknown type: %d\n", type);
     return;
   }
+  // once added to a list, it is a valid process
+  process_count++;
 
   struct pcb *last = tail->prev;
   last->next = pcb;
@@ -198,6 +214,10 @@ void printList(enum ListType type)
   case TTY_READ_LIST:
     TracePrintf(4, "printList: printing tty read list\n");
     current = tty_read_list_head;
+    break;
+  case TTY_WRITE_LIST:
+    TracePrintf(4, "printList: printing tty write list\n");
+    current = tty_write_list_head;
     break;
   default:
     TracePrintf(0, "printList: unknown type: %d\n", type);
@@ -247,4 +267,9 @@ struct pcb *getProcessByPid(int pid)
     current = current->next;
   }
   return NULL;
+}
+
+int countProcess()
+{
+  return process_count;
 }

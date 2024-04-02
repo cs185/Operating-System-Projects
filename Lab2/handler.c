@@ -110,6 +110,62 @@ static int validateString(uintptr_t addr, int prot)
   return 1;
 }
 
+static void writeToTerminal(int tty_id, void *buf, int len)
+{
+  struct pcb *current_process = getCurrentProcess();
+  current_process->tty_write_id = tty_id;
+  int trans_index = 0;
+  while (trans_index < len)
+  {
+    if (getTerminalTransmitStatus(tty_id) == BUSY)
+    {
+      struct pcb *next_process = getNextProcess(0);
+      TracePrintf(3, "blocked the writing process with pid=%d, switching to next process with pid=%d\n", current_process->pid, next_process->pid);
+      // remove it from the execution list
+      removeProcessFromList(current_process);
+      addProcessToList(current_process, TTY_WRITE_LIST);
+
+      ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_process);
+      TracePrintf(3, "switched back in TtyWrite, now process with pid=%d able to write to terminal %d\n", current_process->pid, tty_id);
+    }
+
+    int trans_index_next = trans_index + TERMINAL_MAX_LINE;
+    if (trans_index_next > len)
+      trans_index_next = len;
+
+    int trans_len = trans_index_next - trans_index;
+
+    TracePrintf(3, "string too long, transmiting the %d chars first\n", trans_len);
+    // int transmit_len = getBuf(tty_transmit_buf, buf, TERMINAL_MAX_LINE, 0);
+    // TracePrintf(3, "get %d chars from tty_transmit_buf, the size of tty_transmit_buf now: %d\n", transmit_len, tty_transmit_buf->size);
+    TtyTransmit(tty_id, buf + trans_index, trans_len);
+    setTerminalTransmitStatus(tty_id, BUSY);
+
+    trans_index = trans_index_next;
+  }
+
+  if (getTerminalTransmitStatus(tty_id) == BUSY)
+  {
+    struct pcb *next_process = getNextProcess(0);
+    TracePrintf(3, "blocked the writing process with pid=%d, switching to next process with pid=%d\n", current_process->pid, next_process->pid);
+    // remove it from the execution list
+    removeProcessFromList(current_process);
+    addProcessToList(current_process, TTY_WRITE_LIST);
+
+    ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_process);
+    TracePrintf(3, "switched back in TtyWrite, now process with pid=%d able to write to terminal %d\n", current_process->pid, tty_id);
+  }
+
+  TracePrintf(3, "TtyWrite for process with pid=%d done\n", current_process->pid);
+  current_process->tty_write_id = -1;
+}
+
+static void writeStrToTerminal(int tty_id, char *str)
+{
+  int len = strlen(str);
+  writeToTerminal(tty_id, str, len);
+}
+
 // utility function to exit the current process and get the next one running
 static void exitProcess(int status)
 {
@@ -204,9 +260,10 @@ void onTrapKernel(ExceptionInfo *info)
     char *filename = (char *)info->regs[1];
     char **args = (char **)info->regs[2];
 
-    if (validateString((uintptr_t)filename, PROT_READ) == 0)
+    if (!validateString((uintptr_t)filename, PROT_READ))
     {
       TracePrintf(0, "onTrapKernel: filename is invalid\n");
+      writeStrToTerminal(TTY_CONSOLE, "Invalid file name\n");
       info->regs[0] = ERROR;
       break;
     }
@@ -214,9 +271,10 @@ void onTrapKernel(ExceptionInfo *info)
     int i;
     for (i = 0; args[i] != NULL; i++)
     {
-      if (validateString((uintptr_t)args[i], PROT_READ) == 0)
+      if (!validateString((uintptr_t)args[i], PROT_READ))
       {
         TracePrintf(0, "onTrapKernel: arg %d is invalid\n", i);
+        writeStrToTerminal(TTY_CONSOLE, "Invalid argument\n");
         info->regs[0] = ERROR;
         break;
       }
@@ -260,9 +318,10 @@ void onTrapKernel(ExceptionInfo *info)
     struct pcb *current_process = getCurrentProcess();
     int *status = (int *)info->regs[1];
 
-    if (validatePointer((uintptr_t)status, sizeof(int), PROT_READ | PROT_WRITE) == 0)
+    if (!validatePointer((uintptr_t)status, sizeof(int), PROT_READ | PROT_WRITE))
     {
       TracePrintf(0, "onTrapKernel: wait status buffer is invalid\n");
+      writeStrToTerminal(TTY_CONSOLE, "Invalid address\n");
       info->regs[0] = ERROR;
       break;
     }
@@ -290,6 +349,7 @@ void onTrapKernel(ExceptionInfo *info)
         else
         {
           // if there is no child process, we will return -1
+          writeStrToTerminal(TTY_CONSOLE, "No children left\n");
           info->regs[0] = ERROR;
           break;
         }
@@ -390,14 +450,21 @@ void onTrapKernel(ExceptionInfo *info)
     void *buf = (void *)info->regs[2];
     int len = (int)info->regs[3];
 
-    if (validatePointer((uintptr_t)buf, sizeof(char), PROT_READ & PROT_WRITE) == 0)
+    if (!validatePointer((uintptr_t)buf, len * sizeof(char), PROT_READ | PROT_WRITE))
     {
       TracePrintf(0, "onTrapKernel: tty read buffer is invalid\n");
+      writeStrToTerminal(TTY_CONSOLE, "Invalid read buffer\n");
       info->regs[0] = ERROR;
       break;
     }
 
     TracePrintf(2, "onTrapKernel: tty read is called for terminal %d with target buffer at %x with size=%d\n", tty_id, (uintptr_t)buf, len);
+
+    if (!len)
+    {
+      info->regs[0] = 0;
+      break;
+    }
 
     struct pcb *current_process = getCurrentProcess();
     struct pcb *next_process = getNextProcess(0);
@@ -421,9 +488,12 @@ void onTrapKernel(ExceptionInfo *info)
     // when context switch back or even not go to the above if
     // there must be something to read
     len = getBuf(tty_receive_buf, buf, len, 1);
+    // return error if the char fails to write into the tty buffer
     TracePrintf(3, "read %d chars from tty_receive_buf, the size of tty_receive_buf now: %d\n", len, tty_receive_buf->size);
     current_process->tty_read_id = -1;
-    info->regs[0] = len;
+
+    // return error if the char fails to write into the user buffer
+    info->regs[0] = len ? len : ERROR;
     break;
   }
   case YALNIX_TTY_WRITE:
@@ -432,40 +502,29 @@ void onTrapKernel(ExceptionInfo *info)
     void *buf = (void *)info->regs[2];
     int len = (int)info->regs[3];
 
-    if (validatePointer((uintptr_t)buf, sizeof(char), PROT_READ & PROT_WRITE) == 0)
+    if (!validatePointer((uintptr_t)buf, len * sizeof(char), PROT_READ | PROT_WRITE))
     {
       TracePrintf(0, "onTrapKernel: tty write buffer is invalid\n");
+      writeStrToTerminal(TTY_CONSOLE, "Invalid write buffer\n");
       info->regs[0] = ERROR;
       break;
     }
 
     TracePrintf(2, "onTrapKernel: tty write is called on terminal %d, with %d chars at address %x\n", tty_id, len, (uintptr_t)buf);
 
-    tty_buf *tty_transmit_buf = getTtyTransmitBuf(tty_id);
+    if (!len)
+    {
+      info->regs[0] = 0;
+      break;
+    }
 
+    // block the current writing process
 
-    if (getTerminalTransmitStatus(tty_id) == BUSY)
-    {
-      TracePrintf(3, "terminal %d is busy transmitting\n", tty_id);
-      len = addBuf(tty_transmit_buf, buf, len);
-      TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf->size);
-    }
-    else if (len > TERMINAL_MAX_LINE)
-    {
-      TracePrintf(3, "string too long, transmiting the first part of %d\n", TERMINAL_MAX_LINE);
-      len = addBuf(tty_transmit_buf, buf, len - TERMINAL_MAX_LINE);
-      TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf->size);
-      TtyTransmit(tty_id, buf, TERMINAL_MAX_LINE);
-      setTerminalTransmitStatus(tty_id, BUSY);
-    }
-    else
-    {
-      int buf_len = strlen(buf);
-      len = len <= buf_len ? len : buf_len;
-      TracePrintf(3, "transmiting %d chars\n", len);
-      TtyTransmit(tty_id, buf, len);
-      setTerminalTransmitStatus(tty_id, BUSY);
-    }
+    // put it into a kernel buffer first
+    void *kernel_buf = malloc(len);
+    memcpy(kernel_buf, buf, len);
+
+    writeToTerminal(tty_id, kernel_buf, len);
     info->regs[0] = len;
     break;
   }
@@ -522,54 +581,7 @@ void onTrapIllegal(ExceptionInfo *info)
   AVOID_UNUSED_WARNING(info);
   TracePrintf(2, "onTrapIllegal: illegal instruction is called\n");
 
-  // switch (info->code)
-  // {
-  // case TRAP_ILLEGAL_ILLOPC:
-  //   TracePrintf(2, "Illegal opcode\n");
-  //   break;
-  // case TRAP_ILLEGAL_ILLOPN:
-  //   TracePrintf(2, "Illegal operand\n");
-  //   break;
-  // case TRAP_ILLEGAL_ILLADR:
-  //   TracePrintf(2, "Illegal addressing mode");
-  //   break;
-  // case TRAP_ILLEGAL_ILLTRP:
-  //   TracePrintf(2, "Illegal software trap\n");
-  //   break;
-  // case TRAP_ILLEGAL_PRVOPC:
-  //   TracePrintf(2, "Privileged opcode\n");
-  //   break;
-  // case TRAP_ILLEGAL_PRVREG:
-  //   TracePrintf(2, "Privileged register\n");
-  //   break;
-  // case TRAP_ILLEGAL_COPROC:
-  //   TracePrintf(2, "Coprocessor error\n");
-  //   break;
-  // case TRAP_ILLEGAL_BADSTK:
-  //   TracePrintf(2, "Bad stack\n");
-  //   break;
-  // case TRAP_ILLEGAL_KERNELI:
-  //   TracePrintf(2, "Linux kernel sent SIGILL\n");
-  //   break;
-  // case TRAP_ILLEGAL_USERIB:
-  //   TracePrintf(2, "Received SIGILL or SIGBUS from user\n");
-  //   break;
-  // case TRAP_ILLEGAL_ADRALN:
-  //   TracePrintf(2, "Invalid address alignment\n");
-  //   break;
-  // case TRAP_ILLEGAL_ADRERR:
-  //   TracePrintf(2, "Non-existent physical address\n");
-  //   break;
-  // case TRAP_ILLEGAL_OBJERR:
-  //   TracePrintf(2, "Object-specific HW error\n");
-  //   break;
-  // case TRAP_ILLEGAL_KERNELB:
-  //   TracePrintf(2, "Linux kernel sent SIGBUS\n");
-  //   break;
-  // default:
-  //   break;
-  // }
-
+  writeStrToTerminal(TTY_CONSOLE, "Illegal instruction\n");
   exitProcess(ERROR);
 }
 
@@ -588,6 +600,7 @@ void onTrapMemory(ExceptionInfo *info)
   if (addr >= USER_STACK_LIMIT)
   {
     TracePrintf(0, "Fail to allocate new page: illegal memory\n");
+    writeStrToTerminal(TTY_CONSOLE, "Segmentation fault\n");
     exitProcess(ERROR);
     return;
   }
@@ -596,6 +609,7 @@ void onTrapMemory(ExceptionInfo *info)
   if (addr >= valid_stack_pointer)
   {
     TracePrintf(0, "Fail to allocate new page: memory is already available\n");
+    writeStrToTerminal(TTY_CONSOLE, "Segmentation fault\n");
     exitProcess(ERROR);
     return;
   }
@@ -606,6 +620,7 @@ void onTrapMemory(ExceptionInfo *info)
   if (next_stk < getCurrentProcess()->brk + PAGESIZE)
   {
     TracePrintf(0, "Fail to allocate new page: not enough virtual memory\n");
+    writeStrToTerminal(TTY_CONSOLE, "Segmentation fault\n");
     exitProcess(ERROR);
     return;
   }
@@ -617,8 +632,8 @@ void onTrapMemory(ExceptionInfo *info)
   uintptr_t new_pages[page_count];
   if (allocateMultiPage(page_count, new_pages) == -1)
   {
-    // TODO: print segmentation fault
     TracePrintf(0, "Fail to allocate new page: not enough physical memory\n");
+    writeStrToTerminal(TTY_CONSOLE, "Segmentation fault\n");
     exitProcess(ERROR);
     return;
   }
@@ -643,12 +658,7 @@ void onTrapMath(ExceptionInfo *info)
 {
   TracePrintf(2, "onTrapMath: math exception is called with problem of %d\n", info->code);
   // it's mostly same as calling exit
-  // struct pcb *current_process = getCurrentProcess();
-  // struct pcb *next_process = getNextProcess(0);
-
-  // // TODO write to the terminal to show the error
-  // // TODO save the status if needed
-  // ContextSwitch(ExitSwitch, &current_process->ctx, current_process, next_process);
+  writeStrToTerminal(TTY_CONSOLE, "Math exception\n");
   exitProcess(ERROR);
 }
 
@@ -667,29 +677,43 @@ void onTrapTTYReceive(ExceptionInfo *info)
   TracePrintf(3, "added %d out of %d chars to tty_receive_buf, tty_receive_buf size: %d\n", len, str_len, tty_receive_buf->size);
   free(buf);
 
-  struct pcb *next_read_process = getList(TTY_READ_LIST);
-  while (next_read_process->tty_read_id != tty_id)
+  struct pcb *tty_read_process = getList(TTY_READ_LIST);
+  struct pcb *next_read_process = NULL;
+  tty_read_process = tty_read_process->next;
+  while (tty_read_process->pid != -1)
   {
-    next_read_process = next_read_process->next;
+    if (tty_read_process->tty_read_id == tty_id)
+    {
+      next_read_process = tty_read_process;
+      break;
+    }
+    tty_read_process = tty_read_process->next;
   }
 
-  if (next_read_process != NULL)
-  {
-    TracePrintf(3, "next pending reading process with pid=%d\n", next_read_process->pid);
-    // unblock the next process that wants to read, but not neccessarily at once
-    removeProcessFromList(next_read_process);
+  // struct pcb *next_read_process = getList(TTY_READ_LIST);
+  // next_read_process = next_read_process->next;
+  // while (next_read_process->tty_read_id != tty_id)
+  // {
+  //   next_read_process = next_read_process->next;
+  // }
 
-    addProcessToList(next_read_process, EXECUTION_LIST);
-    TracePrintf(3, "added the pending reading process to the execution list\n");
+  if (next_read_process == NULL)
+    return;
 
-    // // if the current process is idle process, switch to the reading process at once
-    // struct pcb *current_process = getCurrentProcess();
-    // if (current_process->pid == 0)
-    // {
-    //   TracePrintf(3, "idle process detacted, switch now\n");
-    //   ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_read_process);
-    // }
-  }
+  TracePrintf(3, "next pending reading process with pid=%d\n", next_read_process->pid);
+  // unblock the next process that wants to read, but not neccessarily at once
+  removeProcessFromList(next_read_process);
+
+  addProcessToList(next_read_process, EXECUTION_LIST);
+  TracePrintf(3, "added the pending reading process to the execution list\n");
+
+  // // if the current process is idle process, switch to the reading process at once
+  // struct pcb *current_process = getCurrentProcess();
+  // if (current_process->pid == 0)
+  // {
+  //   TracePrintf(3, "idle process detacted, switch now\n");
+  //   ContextSwitch(NormalSwitch, &current_process->ctx, current_process, next_read_process);
+  // }
   // if there is no reading process pending, do nothing as we already save the line
 }
 
@@ -701,19 +725,72 @@ void onTrapTTYTransmit(ExceptionInfo *info)
 
   setTerminalTransmitStatus(tty_id, IDLE);
 
-  tty_buf *tty_transmit_buf = getTtyTransmitBuf(tty_id);
-
-  // always trying to read the maximum of chars
-  void *buf = malloc(TERMINAL_MAX_LINE);
-  // the actual length of the string get from the tty_transmit_buf, len <= TERMINAL_MAX_LINE
-  int len = getBuf(tty_transmit_buf, buf, TERMINAL_MAX_LINE, 0);
-  TracePrintf(3, "get %d chars from tty_transmit_buf, the size of tty_transmit_buf now: %d\n", len, tty_transmit_buf->size);
-
-  if (len)
+  struct pcb *tty_write_process = getList(TTY_WRITE_LIST);
+  struct pcb *next_write_process = NULL;
+  printList(TTY_WRITE_LIST);
+  tty_write_process = tty_write_process->next;
+  while (tty_write_process->pid != -1)
   {
-    TracePrintf(3, "continue transmiting %d chars from tty_transmit_buf\n", len);
-    TtyTransmit(tty_id, buf, len);
-    setTerminalTransmitStatus(tty_id, BUSY);
+    if (tty_write_process->tty_write_id == tty_id)
+    {
+      next_write_process = tty_write_process;
+      break;
+    }
+    tty_write_process = tty_write_process->next;
   }
-  free(buf);
+
+  // we have no candidate, we just exit
+  if (next_write_process == NULL)
+    return;
+
+  TracePrintf(3, "next pending reading process with pid=%d\n", next_write_process->pid);
+  // unblock the next process that wants to read, but not neccessarily at once
+  removeProcessFromList(next_write_process);
+
+  addProcessToList(next_write_process, EXECUTION_LIST);
+  TracePrintf(3, "added the pending reading process to the execution list\n");
+  // tty_buf *tty_transmit_buf = getTtyTransmitBuf(tty_id);
+
+  // // always trying to read the maximum of chars
+  // void *buf = malloc(TERMINAL_MAX_LINE);
+  // // the actual length of the string get from the tty_transmit_buf, len <= TERMINAL_MAX_LINE
+  // int len = getBuf(tty_transmit_buf, buf, TERMINAL_MAX_LINE, 0);
+  // TracePrintf(3, "get %d chars from tty_transmit_buf, the size of tty_transmit_buf now: %d\n", len, tty_transmit_buf->size);
+
+  // if (len)
+  // {
+  //   TracePrintf(3, "continue transmiting %d chars from tty_transmit_buf\n", len);
+  //   TtyTransmit(tty_id, buf, len);
+  //   setTerminalTransmitStatus(tty_id, BUSY);
+  // }
+  // free(buf);
 }
+
+// {
+//   tty_buf *tty_transmit_buf = getTtyTransmitBuf(tty_id);
+
+//   if (getTerminalTransmitStatus(tty_id) == BUSY)
+//   {
+//     TracePrintf(3, "terminal %d is busy transmitting\n", tty_id);
+//     len = addBuf(tty_transmit_buf, buf, len);
+//     TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf->size);
+//   }
+//   else if (len > TERMINAL_MAX_LINE)
+//   {
+//     TracePrintf(3, "string too long, transmiting the first part of %d\n", TERMINAL_MAX_LINE);
+//     len = addBuf(tty_transmit_buf, buf, len - TERMINAL_MAX_LINE);
+//     TracePrintf(3, "added %d chars to tty_transmit_buf, tty_transmit_buf size: %d\n", len, tty_transmit_buf->size);
+//     TtyTransmit(tty_id, buf, TERMINAL_MAX_LINE);
+//     setTerminalTransmitStatus(tty_id, BUSY);
+//   }
+//   else
+//   {
+//     int buf_len = strlen(buf);
+//     len = len <= buf_len ? len : buf_len;
+//     TracePrintf(3, "transmiting %d chars\n", len);
+//     TtyTransmit(tty_id, buf, len);
+//     setTerminalTransmitStatus(tty_id, BUSY);
+//   }
+
+//   return len;
+// }

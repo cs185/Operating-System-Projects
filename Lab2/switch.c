@@ -82,6 +82,12 @@ SavedContext *ExitSwitch(SavedContext *ctxp, void *p1, void *p2)
   removeProcessFromList(current_process);
   free(current_process);
 
+  if (countProcess() == 0)
+  {
+    TracePrintf(2, "ExitSwitch: no more process, halt the system\n");
+    Halt();
+  }
+
   // Exit the pages of the current process
   int i;
   for (i = MEM_INVALID_SIZE; i < VMEM_0_LIMIT; i += PAGESIZE)

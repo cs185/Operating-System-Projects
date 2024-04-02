@@ -13,6 +13,7 @@ enum ListType
   DELAY_LIST,
   WAIT_LIST,
   TTY_READ_LIST,
+  TTY_WRITE_LIST,
 };
 
 // the file manages the process control block
@@ -27,12 +28,13 @@ typedef struct pcb
   // this is the real context including pc sp stc inside
   SavedContext ctx; // context of the process
 
-  int status;      // process status
-  int pid;         // process id
-  int ppid;        // parent process id
-  int delay;       // delay time (clock tick)
-  int child_count; // the number of children of the process currently running
-  int tty_read_id; // the id of the terminal to read from
+  int status;       // process status
+  int pid;          // process id
+  int ppid;         // parent process id
+  int delay;        // delay time (clock tick)
+  int child_count;  // the number of children of the process currently running
+  int tty_read_id;  // the id of the terminal to read from
+  int tty_write_id; // the id of the terminal to write to
 
   uintptr_t page_table; // page table region 0 pointer (physical address)
   uintptr_t stk;        // stack page pointer, the lowest address of the last valid page of the user stack
@@ -75,6 +77,9 @@ void printList(enum ListType type);
 
 // initialize the process manager
 void initProcessManager();
+
+// get the process count
+int countProcess();
 
 // get the process by pid, if not found, return NULL
 struct pcb *getProcessByPid(int pid);

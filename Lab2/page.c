@@ -38,10 +38,17 @@ void initPagePool(unsigned int pmem_size)
   // initialize the bitmap
   // fill all bit as 1
   int i;
-  for (i = 0; i < bitmap_size; i++)
-  {
+
+  for (i = 0; i < bitmap_size - 1; i++)
     free_page_bitmap[i] = 0xFF;
-  }
+
+  // for the last byte, we need to set the bits to 1 based on the total_pages
+  int last_byte = total_pages % 8;
+  unsigned char mask = 0xFF;
+  if (last_byte != 0)
+    for (i = 0; i < 8 - last_byte; i++)
+      mask = mask << 1;
+  free_page_bitmap[bitmap_size - 1] = mask;
 }
 
 int getPageCount()
